@@ -1,10 +1,10 @@
 #include <Time.h>
 #include <TimeLib.h>
 #include <avr/sleep.h>
+#include <avr/io.h>
 
 // constants won't change. They're used here to
 // set pin numbers:
-const int switchPin = 3;     // (Pin 2 on ATtiny)
 const int redPin = 0;       // (Pin 5 on ATtiny)
 const int greenPin = 1;     // (Pin 6 on ATtiny)
 const int bluePin = 4;      // (Pin 3 on ATtiny)
@@ -14,6 +14,10 @@ volatile int currentTime = (hour() * 60) + minute();
 volatile int drinkAlarm = 3;           //1 = manually turned off, 0 = automatically
 
 void setup() {
+  PRR|=(1<<PRADC);              // Turn ADC off.
+  PRR|=PRUSI;                   // Turn USI off.
+  ACSR|=(1<<ACD);               // Turn off Analog comparator.
+    
   // initialize the LED pin as an output:
   pinMode(redPin, OUTPUT);
   pinMode(greenPin, OUTPUT);
@@ -21,10 +25,10 @@ void setup() {
   
   //Setup interrupt on pin 2
   GIMSK = 0b00100000;    // turns on pin change interrupts
-  PCMSK = 0b00000100;    // turn on interrupts on pin 7 (PB3)
+  PCMSK = 0b00001000;    // turn on interrupts on pin 7 (PB3)
   sei();                 // enables interrupts
   
-  LEDCheck();            // Display welcome led sequence
+   LEDCheck();            // Display welcome led sequence
 }
 
 void loop() {
@@ -38,7 +42,7 @@ void loop() {
 
   //  Detect drink, start timer for 30 minutes
   if (drinkAlarm == 2){ // This means last action was a drink
-    LEDCheck();         // Confirm drink
+    LEDCheck();         //Confirm drink
     alarmOff();         // Turn lights off, reset timer
     drinkAlarm = 1;     // 1 means alarm was manually turned off
     
@@ -64,7 +68,7 @@ ISR(PCINT0_vect){
 }
 
 void startSleep(){
-  ADCSRA &= ~_BV(ADEN);                   // ADC off
+
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);    // replaces above statement
   
   sleep_enable();                         // Sets the Sleep Enable bit in the MCUCR Register (SE BIT)
@@ -72,9 +76,8 @@ void startSleep(){
   sleep_cpu();                            // sleep
   
   cli();                                  // Disable interrupts
-  PCMSK &= ~_BV(PCINT3);                  // Turn off PB3 as interrupt pin
+  //PCMSK &= ~_BV(PCINT3);                  // Turn off PB3 as interrupt pin
   sleep_disable();                        // Clear SE bit
-  ADCSRA |= _BV(ADEN);                    // ADC on
   
   sei();                                  // Enable interrupts
 }
@@ -100,7 +103,7 @@ void rainbowLED(){
 
     // cross-fade the two colours.
     for(int i = 0; i < 255; i += 1) {
-      if (drinkAlarm == 2){ //The user drank, let's prematurely end this loop
+      if (drinkAlarm == 2){ // The user drank, let's prematurely end this loop
         i = 255;
       }
       
@@ -116,12 +119,23 @@ void rainbowLED(){
 
 //  Blink red, green, blue as a welcome and confirmation message
 void LEDCheck(){
-  setColourRgb(255,0,0);
-  delay(500);
-  setColourRgb(0,75,0);
-  delay(500);
-  setColourRgb(0,0,75);
-  delay(500);
-  setColourRgb(0,0,0);
+  
+// startup animation
+ unsigned int thisBlip = 1; // 1 to begin the loop
+ byte fadeDirection = 1;
+ while (thisBlip) {
+   if (thisBlip > 0 && thisBlip <= 255) analogWrite(redPin, constrain(thisBlip-0,0,255));
+   else if (thisBlip > 255 && thisBlip < 511) analogWrite(redPin, constrain(255-(thisBlip-255),0,255));
+   if (thisBlip > 127 && thisBlip <= 383) analogWrite(greenPin, constrain(thisBlip-128,0,255));
+   else if (thisBlip > 383 && thisBlip < 638) analogWrite(greenPin, constrain(255-(thisBlip-383),0,255));
+   if (thisBlip > 255 && thisBlip <= 511) analogWrite(bluePin, constrain(thisBlip-256,0,255));
+   else if (thisBlip > 511 && thisBlip < 766) analogWrite(bluePin, constrain(255-(thisBlip-511),0,255));
+   if (fadeDirection) thisBlip++;
+   else thisBlip--;
+   if (thisBlip > 638) fadeDirection = 0; // you can adjust 638 to change the ending point, goes up to 766 to make the last LED fade completely out at the end before going back "up" and going back through the sequence to the top again. at 638 it reverses when the last LED is full brightness.
+   delay(1);
+ }
+ digitalWrite(redPin,LOW);
+ digitalWrite(greenPin,LOW);
+ digitalWrite(bluePin,LOW);
 }
-
